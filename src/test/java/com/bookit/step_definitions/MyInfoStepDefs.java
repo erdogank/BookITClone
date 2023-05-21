@@ -13,8 +13,7 @@ public class MyInfoStepDefs {
 
 	@Given("user logs in using {string} {string}")
 	public void user_logs_in_using(String email, String password) {
-	    Driver.get().get(Environment.URL);
-	    Driver.get().manage().window().maximize();
+	    Driver.get().get(ConfigurationReader.get("qa2url"));
 	    SignInPage signInPage = new SignInPage();
 	    signInPage.email.sendKeys(email);
 	    signInPage.password.sendKeys(password);

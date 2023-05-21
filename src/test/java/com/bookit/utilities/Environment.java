@@ -39,7 +39,7 @@ public class Environment {
                 e.printStackTrace();
             }
 
-            URL = properties.getProperty("url");
+            URL = properties.getProperty("qa2url");
             BASE_URL = properties.getProperty("base_url");
             DB_USERNAME = properties.getProperty("dbUsername");
             DB_PASSWORD = properties.getProperty("dbPassword");

@@ -14,6 +14,10 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.response.Response;
 import org.junit.Assert;
 
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static io.restassured.RestAssured.*;
@@ -28,7 +32,16 @@ public class ApiStepDefs {
     @Given("I logged Bookit api using {string} and {string}")
     public void i_logged_Bookit_api_using_and(String email, String password) {
 
-        token = BookItApiUtil.generateToken(email,password);
+        Response response = given().accept(ContentType.JSON)
+                .queryParam("email", email)
+                .queryParam("password", password)
+                .when()
+                .get(ConfigurationReader.get("qa2api.url") + "/sign");
+        token = response.path("accessToken");
+        System.out.println(token);
+
+
+//        token = BookItApiUtil.generateToken(email,password);
         emailGlobal = email;
     }
 
@@ -38,71 +51,171 @@ public class ApiStepDefs {
 
         //send a GET request "/api/users/me" endpoint to get current user info
 
-         response = given().accept(ContentType.JSON)
+        response = given().accept(ContentType.JSON)
                 .and()
                 .header("Authorization", token)
                 .when()
-                .get(Environment.BASE_URL + "/api/users/me");
+                .get(ConfigurationReader.get("qa2api.url") + "/api/users/me");
+
+
+//         response = given().accept(ContentType.JSON)
+//                .and()
+//                .header("Authorization", token)
+//                .when()
+//                .get(Environment.BASE_URL + "/api/users/me");
 
     }
 
     @Then("status code should be {int}")
     public void status_code_should_be(int statusCode) {
-        //verify status code matches with the feature file expected status code
-        Assert.assertEquals(statusCode,response.statusCode());
+//        //verify status code matches with the feature file expected status code
+
+        //Assert.assertTrue(response.statusCode()==statusCode);
+       Assert.assertEquals(statusCode,response.statusCode());
 
     }
 
     @Then("the information about current user from api and database should match")
-    public void theInformationAboutCurrentUserFromApiAndDatabaseShouldMatch() {
+    public void theInformationAboutCurrentUserFromApiAndDatabaseShouldMatch() throws SQLException {
         System.out.println("we will compare database and api in this step");
+
+        String dbUrl = ConfigurationReader.get("qa2dbUrl");
+        String dbUsername = ConfigurationReader.get("dbUsername");
+        String dbPassword = ConfigurationReader.get("dbPassword");
+
+        String query = "select firstname,lastname,role from users\n" +
+                "where email = '"+emailGlobal+"'";
+        System.out.println("query = " + query);
+
+        Connection connection = DriverManager.getConnection(dbUrl,dbUsername,dbPassword);
+        Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE, ResultSet.CONCUR_READ_ONLY);
+        ResultSet resultSet = statement.executeQuery(query);
+
+
+        Map<String,Object> row = new LinkedHashMap<>();
+        ResultSetMetaData rsmd = resultSet.getMetaData();
+
+        System.out.println("rsmd.getColumnCount() = " + rsmd.getColumnCount());
+
+        //I put information from database into a map
+        while(resultSet.next()) {
+            for (int i = 1; i <= rsmd.getColumnCount(); i++) {
+                row.put(rsmd.getColumnName(i), resultSet.getString(i));
+            }
+        }
+        System.out.println("row = " + row);
+
+        //expected infotmation from database
+        String expectedFirstName = (String) row.get("firstname");
+        String expectedLastName = (String) row.get("lastname");
+        String expectedRole = (String) row.get("role");
+
+        //I get information from api
+        Map<String,Object> mapApi = response.as(Map.class);
+        System.out.println("mapApi = " + mapApi);
+
+        //actual information from api
+        String actualFirstName = (String) mapApi.get("firstName");
+        String actualLasttName = (String) mapApi.get("lastName");
+        String actualRole = (String) mapApi.get("role");
+
+        //compare database with api
+
+        Assert.assertEquals(expectedFirstName,actualFirstName);
+        Assert.assertEquals(expectedLastName,actualLasttName);
+        Assert.assertEquals(expectedRole,actualRole);
+
+
 
         //get information from database
         //connection is from hooks and it will be ready
-        String query = "select firstname,lastname,role from users\n" +
-                "where email = '"+emailGlobal+"'";
-
-        Map<String,Object> dbMap = DBUtils.getRowMap(query);
-        System.out.println("dbMap = " + dbMap);
-        //save db info into variables
-        String expectedFirstName = (String) dbMap.get("firstname");
-        String expectedLastName = (String) dbMap.get("lastname");
-        String expectedRole = (String) dbMap.get("role");
-
-        //get information from api
-        JsonPath jsonPath = response.jsonPath();
-        //save api info into variables
-        String actualFirstName = jsonPath.getString("firstName");
-        String actualLastName = jsonPath.getString("lastName");
-        String actualRole = jsonPath.getString("role");
-
-        //compare database vs api
-        Assert.assertEquals(expectedFirstName,actualFirstName);
-        Assert.assertEquals(expectedLastName,actualLastName);
-        Assert.assertEquals(expectedRole,actualRole);
+//        String query = "select firstname,lastname,role from users\n" +
+//                "where email = '"+emailGlobal+"'";
+//
+//        Map<String,Object> dbMap = DBUtils.getRowMap(query);
+//        System.out.println("dbMap = " + dbMap);
+//        //save db info into variables
+//        String expectedFirstName = (String) dbMap.get("firstname");
+//        String expectedLastName = (String) dbMap.get("lastname");
+//        String expectedRole = (String) dbMap.get("role");
+//
+//        //get information from api
+//        JsonPath jsonPath = response.jsonPath();
+//        //save api info into variables
+//        String actualFirstName = jsonPath.getString("firstName");
+//        String actualLastName = jsonPath.getString("lastName");
+//        String actualRole = jsonPath.getString("role");
+//
+//        //compare database vs api
+//        Assert.assertEquals(expectedFirstName,actualFirstName);
+//        Assert.assertEquals(expectedLastName,actualLastName);
+//        Assert.assertEquals(expectedRole,actualRole);
 
     }
 
     @Then("UI,API and Database user information must be match")
-    public void uiAPIAndDatabaseUserInformationMustBeMatch() {
-        //get information from database
-        //connection is from hooks and it will be ready
+    public void uiAPIAndDatabaseUserInformationMustBeMatch() throws SQLException {
+
+        String dbUrl = ConfigurationReader.get("qa2dbUrl");
+        String dbUsername = ConfigurationReader.get("dbUsername");
+        String dbPassword = ConfigurationReader.get("dbPassword");
+
         String query = "select firstname,lastname,role from users\n" +
                 "where email = '"+emailGlobal+"'";
+        System.out.println("query = " + query);
 
-        Map<String,Object> dbMap = DBUtils.getRowMap(query);
-        System.out.println("dbMap = " + dbMap);
-        //save db info into variables
-        String expectedFirstName = (String) dbMap.get("firstname");
-        String expectedLastName = (String) dbMap.get("lastname");
-        String expectedRole = (String) dbMap.get("role");
+        Connection connection = DriverManager.getConnection(dbUrl,dbUsername,dbPassword);
+        Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE, ResultSet.CONCUR_READ_ONLY);
+        ResultSet resultSet = statement.executeQuery(query);
 
-        //get information from api
-        JsonPath jsonPath = response.jsonPath();
-        //save api info into variables
-        String actualFirstName = jsonPath.getString("firstName");
-        String actualLastName = jsonPath.getString("lastName");
-        String actualRole = jsonPath.getString("role");
+
+        Map<String,Object> row = new LinkedHashMap<>();
+        ResultSetMetaData rsmd = resultSet.getMetaData();
+
+        System.out.println("rsmd.getColumnCount() = " + rsmd.getColumnCount());
+
+
+
+        //I put information from database into a map
+        while(resultSet.next()) {
+            for (int i = 1; i <= rsmd.getColumnCount(); i++) {
+                row.put(rsmd.getColumnName(i), resultSet.getString(i));
+            }
+        }
+        System.out.println("row = " + row);
+
+        //expected infotmation from database
+        String expectedFirstName = (String) row.get("firstname");
+        String expectedLastName = (String) row.get("lastname");
+        String expectedRole = (String) row.get("role");
+
+        //I get information from api
+        Map<String,Object> mapApi = response.as(Map.class);
+        System.out.println("mapApi = " + mapApi);
+
+        //actual information from api
+        String actualFirstName = (String) mapApi.get("firstName");
+        String actualLastName = (String) mapApi.get("lastName");
+        String actualRole = (String) mapApi.get("role");
+
+//        //get information from database
+//        //connection is from hooks and it will be ready
+//        String query = "select firstname,lastname,role from users\n" +
+//                "where email = '"+emailGlobal+"'";
+//
+//        Map<String,Object> dbMap = DBUtils.getRowMap(query);
+//        System.out.println("dbMap = " + dbMap);
+//        //save db info into variables
+//        String expectedFirstName = (String) dbMap.get("firstname");
+//        String expectedLastName = (String) dbMap.get("lastname");
+//        String expectedRole = (String) dbMap.get("role");
+//
+//        //get information from api
+//        JsonPath jsonPath = response.jsonPath();
+//        //save api info into variables
+//        String actualFirstName = jsonPath.getString("firstName");
+//        String actualLastName = jsonPath.getString("lastName");
+//        String actualRole = jsonPath.getString("role");
 
         //get information from UI
         SelfPage selfPage = new SelfPage();
@@ -143,8 +256,9 @@ public class ApiStepDefs {
                 .and().header("Authorization",token)
                 .log().all()
                 .when()
-                .post(Environment.BASE_URL + path)
-        .then().log().all().extract().response();        ;
+                .post(ConfigurationReader.get("qa2api.url") + path)
+        .then().log().all().extract().response();
+        System.out.println("response.statusCode() = " + response.statusCode());
 
 
     }
